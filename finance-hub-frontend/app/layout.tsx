@@ -1,35 +1,31 @@
 import type { Metadata } from "next";
-import localFont from "next/font/local";
+import { Inter } from "next/font/google";
 import "./globals.css";
-import { cn } from "@/lib/utils";
+import { Providers } from "@/components/providers";
+import { Toaster } from "@/components/ui/sonner";
 
-const geistSans = localFont({
-  src: "./fonts/GeistVF.woff",
-  variable: "--font-geist-sans",
-  weight: "100 900",
-});
-const geistMono = localFont({
-  src: "./fonts/GeistMonoVF.woff",
-  variable: "--font-geist-mono",
-  weight: "100 900",
-});
+const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Finance Hub",
-  description: "AI-powered personal finance management",
+  title: "Finance Hub — AI Financial Research Platform",
+  description:
+    "AI-powered financial research: document Q&A, earnings analysis, stock research, portfolio analytics, and more.",
 };
 
 export default function RootLayout({
   children,
-}: Readonly<{
+}: {
   children: React.ReactNode;
-}>) {
+}) {
   return (
-    <html lang="en" className={cn("font-sans", geistSans.variable)}>
+    <html lang="en" className="dark">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${inter.className} bg-background text-foreground min-h-screen`}
       >
-        {children}
+        <Providers>
+          {children}
+          <Toaster />
+        </Providers>
       </body>
     </html>
   );
