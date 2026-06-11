@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: finance-hub-api
+    env: python
+    region: oregon
+    plan: free
+    rootDir: finance-hub-backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: PINECONE_API_KEY
+        sync: false
+      - key: PINECONE_INDEX_NAME
+        sync: false
+      - key: PINECONE_ENVIRONMENT
+        sync: false
+      - key: UPSTASH_REDIS_REST_URL
+        sync: false
+      - key: UPSTASH_REDIS_REST_TOKEN
+        sync: false
+      - key: HUGGINGFACE_API_TOKEN
+        sync: false
+      - key: HUGGINGFACE_SPACE_URL
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GNEWS_API_KEY
+        sync: false
