@@ -111,7 +111,7 @@ export default function PortfolioPage() {
                     <BarChart data={pnlChartData}>
                       <XAxis dataKey="ticker" tick={{ fontSize: 11, fill: "#94a3b8" }} />
                       <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} />
-                      <Tooltip formatter={(v: number) => [`${v.toFixed(2)}%`, "P&L"]} />
+                      <Tooltip formatter={(v) => [`${Number(v).toFixed(2)}%`, "P&L"]} />
                       <Bar dataKey="pnl" fill="#3b82f6" radius={[4, 4, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>

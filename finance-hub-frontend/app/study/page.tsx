@@ -86,7 +86,7 @@ export default function StudyPage() {
         <main className="p-8 max-w-3xl space-y-6">
           <h1 className="text-2xl font-bold">Study Assistant</h1>
           <div className="flex flex-wrap gap-4">
-            <Select value={exam} onValueChange={(v) => { setExam(v); setTopic(TOPICS[v][0]); }}>
+            <Select value={exam} onValueChange={(v) => { if (!v) return; setExam(v); setTopic(TOPICS[v]?.[0] ?? ""); }}>
               <SelectTrigger className="w-36 bg-input border-border">
                 <SelectValue placeholder="Exam" />
               </SelectTrigger>
@@ -94,7 +94,7 @@ export default function StudyPage() {
                 {EXAM_TYPES.map(e => <SelectItem key={e} value={e}>{e}</SelectItem>)}
               </SelectContent>
             </Select>
-            <Select value={topic} onValueChange={setTopic}>
+            <Select value={topic} onValueChange={(v) => { if (v) setTopic(v); }}>
               <SelectTrigger className="w-52 bg-input border-border">
                 <SelectValue placeholder="Topic" />
               </SelectTrigger>
@@ -102,7 +102,7 @@ export default function StudyPage() {
                 {(TOPICS[exam] || []).map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
               </SelectContent>
             </Select>
-            <Select value={mode} onValueChange={(v) => setMode(v as "practice" | "flashcard")}>
+            <Select value={mode} onValueChange={(v) => { if (v) setMode(v as "practice" | "flashcard"); }}>
               <SelectTrigger className="w-40 bg-input border-border">
                 <SelectValue placeholder="Mode" />
               </SelectTrigger>
