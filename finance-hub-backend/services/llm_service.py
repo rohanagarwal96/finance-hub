@@ -12,7 +12,7 @@ load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), "../../.env"))
 logger = logging.getLogger(__name__)
 
 _MODEL_ID = "rohan1324/phi3-mini-finance-merged"
-_API_URL = f"https://api-inference.huggingface.co/models/{_MODEL_ID}"
+_API_URL = f"https://router.huggingface.co/hf-inference/models/{_MODEL_ID}"
 _TOKEN = os.environ.get("HUGGINGFACE_API_TOKEN", "").strip().strip('"')
 _HEADERS = {"Authorization": f"Bearer {_TOKEN}"}
 
