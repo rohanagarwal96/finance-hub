@@ -18,6 +18,21 @@ _client = InferenceClient(
 )
 
 
+def _run_inference(prompt: str, max_tokens: int, temperature: float) -> str:
+    """Sync wrapper that converts StopIteration to RuntimeError before it hits asyncio."""
+    try:
+        return _client.text_generation(
+            prompt,
+            max_new_tokens=max_tokens,
+            temperature=max(temperature, 0.01),
+            do_sample=temperature > 0,
+        )
+    except StopIteration as exc:
+        raise RuntimeError(
+            "HF Inference API returned empty response — model may not be loaded or supported"
+        ) from exc
+
+
 async def llm_generate(
     prompt: str,
     max_tokens: int = 512,
@@ -26,15 +41,7 @@ async def llm_generate(
     """Generate text via HF Inference API. Raises HTTPException(503) on failure."""
     try:
         loop = asyncio.get_event_loop()
-        response = await loop.run_in_executor(
-            None,
-            lambda: _client.text_generation(
-                prompt,
-                max_new_tokens=max_tokens,
-                temperature=max(temperature, 0.01),
-                do_sample=temperature > 0,
-            ),
-        )
+        response = await loop.run_in_executor(None, _run_inference, prompt, max_tokens, temperature)
         return response
     except Exception as exc:
         logger.error("HF Inference API error: %s", exc)
