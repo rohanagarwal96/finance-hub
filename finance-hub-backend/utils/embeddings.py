@@ -1,24 +1,23 @@
-"""Sentence-transformers embedding model (all-MiniLM-L6-v2, 384 dims)."""
+"""fastembed embedding model (all-MiniLM-L6-v2, 384 dims, ONNX-based)."""
 from __future__ import annotations
 
-from sentence_transformers import SentenceTransformer
+from fastembed import TextEmbedding
 
-_MODEL: SentenceTransformer | None = None
-_MODEL_NAME = "all-MiniLM-L6-v2"
+_MODEL: TextEmbedding | None = None
+_MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
 
 
-def _get_model() -> SentenceTransformer:
+def _get_model() -> TextEmbedding:
     global _MODEL
     if _MODEL is None:
-        _MODEL = SentenceTransformer(_MODEL_NAME)
+        _MODEL = TextEmbedding(_MODEL_NAME)
     return _MODEL
 
 
 def embed_texts(texts: list[str]) -> list[list[float]]:
     """Return 384-dim embeddings for a list of texts."""
     model = _get_model()
-    vectors = model.encode(texts, normalize_embeddings=True)
-    return vectors.tolist()
+    return [emb.tolist() for emb in model.embed(texts)]
 
 
 def embed_single(text: str) -> list[float]:
