@@ -1,4 +1,5 @@
-"""Groq API client for Llama 3.1 70B — used for Modules 3, 5, 6."""
+"""Groq API client for Llama 3.3 70B — used for Modules 3, 5, 6."""
+import logging
 import os
 from typing import Optional
 
@@ -8,8 +9,10 @@ from groq import AsyncGroq
 
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), "../../.env"))
 
+logger = logging.getLogger(__name__)
+
 _client = AsyncGroq(api_key=os.environ["GROQ_API_KEY"].strip().strip('"'))
-_MODEL = "llama-3.1-70b-versatile"
+_MODEL = "llama-3.3-70b-versatile"
 
 
 async def groq_complete(
@@ -31,6 +34,7 @@ async def groq_complete(
         )
         return response.choices[0].message.content
     except Exception as exc:
+        logger.error("Groq API error: %s", exc)
         raise HTTPException(status_code=503, detail=f"Groq API error: {exc}")
 
 
@@ -50,4 +54,5 @@ async def groq_complete_with_history(
         )
         return response.choices[0].message.content
     except Exception as exc:
+        logger.error("Groq API error: %s", exc)
         raise HTTPException(status_code=503, detail=f"Groq API error: {exc}")
