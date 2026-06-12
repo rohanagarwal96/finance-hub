@@ -1,14 +1,12 @@
 services:
   - type: web
     name: finance-hub-api
-    env: python
+    env: docker
     region: oregon
     plan: free
-    buildCommand: pip install -r requirements.txt
-    startCommand: cd finance-hub-backend && uvicorn main:app --host 0.0.0.0 --port $PORT
+    dockerfilePath: ./finance-hub-backend/Dockerfile
+    dockerContext: ./finance-hub-backend
     envVars:
-      - key: PYTHON_VERSION
-        value: "3.11.0"
       - key: DATABASE_URL
         sync: false
       - key: PINECONE_API_KEY
