@@ -41,8 +41,7 @@ export default function StudyPage() {
     setResult(null);
     setFlipped(false);
     try {
-      // Use a placeholder document ID — study generates generic questions
-      const qs = await generateStudyQuestions("general", 5);
+      const qs = await generateStudyQuestions({ examType: exam, topic, mode }, 5);
       setQuestions(qs);
     } catch {
       toast.error("Could not generate questions.");
@@ -56,8 +55,11 @@ export default function StudyPage() {
     setSelectedAnswer(answer);
     try {
       const res = await submitStudyAttempt({
-        question_id: "temp",
+        examType: currentQuestion.exam_type,
+        topic: currentQuestion.topic,
+        question: currentQuestion.question,
         user_answer: answer,
+        correct_answer: currentQuestion.correct_answer,
       });
       setResult(res);
     } catch {

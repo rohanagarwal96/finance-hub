@@ -83,20 +83,31 @@ export async function getResearchReport(ticker: string, focus = "comprehensive")
 
 // Study
 export async function generateStudyQuestions(
-  documentId: string,
+  params: { examType: string; topic: string; mode: string },
   numQuestions = 5
 ): Promise<StudyQuestion[]> {
   const { data } = await api.post(
-    `/study/generate/${documentId}?num_questions=${numQuestions}`
+    `/study/generate?num_questions=${numQuestions}`,
+    { exam_type: params.examType, topic: params.topic, mode: params.mode, user_id: "anonymous" }
   );
   return data;
 }
 
 export async function submitStudyAttempt(params: {
-  question_id: string;
+  examType: string;
+  topic: string;
+  question: string;
   user_answer: string;
+  correct_answer: string;
 }): Promise<StudyAttemptResult> {
-  const { data } = await api.post("/study/attempt", params);
+  const { data } = await api.post("/study/attempt", {
+    user_id: "anonymous",
+    exam_type: params.examType,
+    topic: params.topic,
+    question: params.question,
+    user_answer: params.user_answer,
+    correct_answer: params.correct_answer,
+  });
   return data;
 }
 
