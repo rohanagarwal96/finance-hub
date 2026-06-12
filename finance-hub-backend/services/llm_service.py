@@ -1,17 +1,17 @@
-"""Async HTTP wrapper for the HuggingFace Space /generate endpoint."""
-import asyncio
+"""LLM text generation — backed by Groq Llama 3.3 70B."""
+import logging
 import os
-from typing import Optional
 
-import httpx
 from dotenv import load_dotenv
 from fastapi import HTTPException
+from groq import AsyncGroq
 
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), "../../.env"))
 
-_SPACE_URL = os.environ["HUGGINGFACE_SPACE_URL"].strip().strip('"').rstrip("/")
-_TIMEOUT = 120.0
-_MAX_RETRIES = 3
+logger = logging.getLogger(__name__)
+
+_client = AsyncGroq(api_key=os.environ["GROQ_API_KEY"].strip().strip('"'))
+_MODEL = "llama-3.3-70b-versatile"
 
 
 async def llm_generate(
@@ -19,26 +19,18 @@ async def llm_generate(
     max_tokens: int = 512,
     temperature: float = 0.7,
 ) -> str:
-    """Call the HF Space /generate endpoint with retry + exponential backoff.
-
-    Returns the generated text string.
-    Raises HTTPException(503) if all retries fail.
-    """
-    payload = {"prompt": prompt, "max_tokens": max_tokens, "temperature": temperature}
-
-    for attempt in range(_MAX_RETRIES):
-        try:
-            async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
-                resp = await client.post(f"{_SPACE_URL}/generate", json=payload)
-                resp.raise_for_status()
-                return resp.json()["generated_text"]
-        except (httpx.TimeoutException, httpx.HTTPStatusError, httpx.ConnectError) as exc:
-            if attempt == _MAX_RETRIES - 1:
-                raise HTTPException(
-                    status_code=503,
-                    detail=f"LLM service unavailable after {_MAX_RETRIES} retries: {exc}",
-                )
-            wait = 2 ** attempt
-            await asyncio.sleep(wait)
-
-    raise HTTPException(status_code=503, detail="LLM service unavailable")
+    """Generate a response via Groq. Raises HTTPException(503) on failure."""
+    try:
+        response = await _client.chat.completions.create(
+            model=_MODEL,
+            messages=[
+                {"role": "system", "content": "You are a helpful AI assistant."},
+                {"role": "user", "content": prompt},
+            ],
+            max_tokens=max_tokens,
+            temperature=temperature,
+        )
+        return response.choices[0].message.content
+    except Exception as exc:
+        logger.error("LLM generation error: %s", exc)
+        raise HTTPException(status_code=503, detail=f"LLM service unavailable: {exc}")
