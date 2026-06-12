@@ -1,17 +1,18 @@
-"""LLM text generation via HF Inference API — rohan1324/phi3-mini-finance-qlora."""
+"""LLM text generation via HF Inference API — rohan1324/phi3-mini-finance-merged."""
+import asyncio
 import logging
 import os
 
 from dotenv import load_dotenv
 from fastapi import HTTPException
-from huggingface_hub import AsyncInferenceClient
+from huggingface_hub import InferenceClient
 
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), "../../.env"))
 
 logger = logging.getLogger(__name__)
 
 _MODEL_ID = "rohan1324/phi3-mini-finance-merged"
-_client = AsyncInferenceClient(
+_client = InferenceClient(
     model=_MODEL_ID,
     token=os.environ.get("HUGGINGFACE_API_TOKEN", "").strip().strip('"'),
 )
@@ -24,11 +25,15 @@ async def llm_generate(
 ) -> str:
     """Generate text via HF Inference API. Raises HTTPException(503) on failure."""
     try:
-        response = await _client.text_generation(
-            prompt,
-            max_new_tokens=max_tokens,
-            temperature=max(temperature, 0.01),
-            do_sample=temperature > 0,
+        loop = asyncio.get_event_loop()
+        response = await loop.run_in_executor(
+            None,
+            lambda: _client.text_generation(
+                prompt,
+                max_new_tokens=max_tokens,
+                temperature=max(temperature, 0.01),
+                do_sample=temperature > 0,
+            ),
         )
         return response
     except Exception as exc:
