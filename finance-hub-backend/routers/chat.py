@@ -48,7 +48,7 @@ async def list_conversations(
     rows = result.fetchall()
     return [
         ConversationSummary(
-            id=row.id,
+            id=str(row.id),
             title="",
             created_at=row.created_at,
         )
@@ -134,6 +134,6 @@ async def get_messages(
         {"cid": conversation_id},
     )
     return [
-        MessageItem(id=row.id, role=row.role, content=row.content, created_at=row.created_at)
+        MessageItem(id=str(row.id), role=row.role, content=row.content, created_at=row.created_at)
         for row in result.fetchall()
     ]

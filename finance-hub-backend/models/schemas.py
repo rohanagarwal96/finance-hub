@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 
 class ChatMessageRequest(BaseModel):
     conversation_id: Optional[str] = None
-    user_id: str
+    user_id: str = "anonymous"
     content: str
 
 
