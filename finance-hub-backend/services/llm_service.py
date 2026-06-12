@@ -10,7 +10,7 @@ load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), "../../.env"))
 
 logger = logging.getLogger(__name__)
 
-_MODEL_ID = "rohan1324/phi3-mini-finance-qlora"
+_MODEL_ID = "rohan1324/phi3-mini-finance-merged"
 _client = AsyncInferenceClient(
     model=_MODEL_ID,
     token=os.environ.get("HUGGINGFACE_API_TOKEN", "").strip().strip('"'),
