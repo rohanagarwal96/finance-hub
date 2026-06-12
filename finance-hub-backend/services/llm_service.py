@@ -12,28 +12,22 @@ load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), "../../.env"))
 logger = logging.getLogger(__name__)
 
 _MODEL_ID = "rohan1324/phi3-mini-finance-merged"
-_API_URL = f"https://router.huggingface.co/hf-inference/models/{_MODEL_ID}"
+_API_URL = f"https://router.huggingface.co/hf-inference/models/{_MODEL_ID}/v1/chat/completions"
 _TOKEN = os.environ.get("HUGGINGFACE_API_TOKEN", "").strip().strip('"')
-_HEADERS = {"Authorization": f"Bearer {_TOKEN}"}
+_HEADERS = {"Authorization": f"Bearer {_TOKEN}", "Content-Type": "application/json"}
 
 
 def _run_inference(prompt: str, max_tokens: int, temperature: float) -> str:
     payload = {
-        "inputs": prompt,
-        "parameters": {
-            "max_new_tokens": max_tokens,
-            "temperature": max(temperature, 0.01),
-            "do_sample": temperature > 0,
-            "return_full_text": False,
-        },
+        "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": max_tokens,
+        "temperature": max(temperature, 0.01),
     }
     resp = requests.post(_API_URL, headers=_HEADERS, json=payload, timeout=120)
-    logger.info("HF API status: %d | body: %s", resp.status_code, resp.text[:500])
+    logger.warning("HF API status: %d | body: %s", resp.status_code, resp.text[:500])
     resp.raise_for_status()
     data = resp.json()
-    if isinstance(data, list) and data:
-        return data[0].get("generated_text", "")
-    raise RuntimeError(f"Unexpected HF API response: {data}")
+    return data["choices"][0]["message"]["content"]
 
 
 async def llm_generate(
