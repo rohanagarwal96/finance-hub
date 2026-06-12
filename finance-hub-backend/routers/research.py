@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from pydantic import BaseModel
 
 from services.cache_service import cache_get, cache_set
@@ -28,15 +28,11 @@ async def research_stock(request: ResearchRequest) -> dict:
     if cached:
         return cached
 
-    # Gather market data
+    # Gather market data (errors are non-fatal — Groq can still generate a report)
     price_data = get_stock_price(ticker)
     financial_data = get_financials(ticker)
     filings = await get_sec_filings(ticker)
 
-    if "error" in price_data and "error" in financial_data:
-        raise HTTPException(status_code=404, detail=f"Could not find data for ticker {ticker}")
-
-    # Build research prompt
     company_name = financial_data.get("company_name", ticker)
     prompt = (
         f"You are a senior equity analyst. Write a {request.focus} research report for {company_name} ({ticker}).\n\n"

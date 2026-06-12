@@ -4,13 +4,28 @@ from __future__ import annotations
 from typing import Any
 
 import httpx
+import requests
 import yfinance as yf
+
+
+def _yf_session() -> requests.Session:
+    session = requests.Session()
+    session.headers.update({
+        "User-Agent": (
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/120.0.0.0 Safari/537.36"
+        ),
+        "Accept": "*/*",
+        "Accept-Language": "en-US,en;q=0.9",
+    })
+    return session
 
 
 def get_stock_price(ticker: str) -> dict[str, Any]:
     """Return current price, volume, and market cap for a ticker."""
     try:
-        t = yf.Ticker(ticker)
+        t = yf.Ticker(ticker, session=_yf_session())
         info = t.info
         return {
             "ticker": ticker.upper(),
@@ -26,7 +41,7 @@ def get_stock_price(ticker: str) -> dict[str, Any]:
 def get_financials(ticker: str) -> dict[str, Any]:
     """Return key financial metrics for a ticker."""
     try:
-        t = yf.Ticker(ticker)
+        t = yf.Ticker(ticker, session=_yf_session())
         info = t.info
         return {
             "ticker": ticker.upper(),
