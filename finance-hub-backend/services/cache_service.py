@@ -14,22 +14,28 @@ _HEADERS = {"Authorization": f"Bearer {_REDIS_TOKEN}"}
 
 
 async def cache_get(key: str) -> Optional[Any]:
-    """Return the cached value for key, or None if missing/expired."""
+    """Return the cached value for key, or None if missing/expired/corrupt."""
     async with httpx.AsyncClient() as client:
         resp = await client.get(f"{_REDIS_URL}/get/{key}", headers=_HEADERS)
         data = resp.json()
         if data.get("result") is None:
             return None
-        return json.loads(data["result"])
+        try:
+            return json.loads(data["result"])
+        except (json.JSONDecodeError, TypeError):
+            return None
 
 
 async def cache_set(key: str, value: Any, ttl_seconds: int = 3600) -> None:
     """Store value as JSON under key with a TTL."""
     serialized = json.dumps(value)
+    # Use POST with a command array so arbitrary JSON is sent in the body,
+    # not embedded in the URL path where special characters corrupt the value.
     async with httpx.AsyncClient() as client:
-        await client.get(
-            f"{_REDIS_URL}/set/{key}/{serialized}/EX/{ttl_seconds}",
-            headers=_HEADERS,
+        await client.post(
+            _REDIS_URL,
+            headers={**_HEADERS, "Content-Type": "application/json"},
+            content=json.dumps(["SET", key, serialized, "EX", str(ttl_seconds)]),
         )
 
 
