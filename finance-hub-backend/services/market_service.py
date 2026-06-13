@@ -1,12 +1,8 @@
-"""Market data: yfinance fast_info (price/market cap) + FMP (fundamentals).
+"""Market data via FMP stable API + yfinance fast_info fallback.
 
-Yahoo Finance's quoteSummary endpoint (used by yf.Ticker.info) is blocked
-by Cloudflare Edge on cloud server IPs. fast_info uses /v8/finance/chart/
-which is not restricted the same way and reliably returns price/market cap.
-
-For sector, industry, and financial ratios, Financial Modeling Prep (FMP)
-is used when FMP_API_KEY is set. Without it, those fields return None and
-the Groq report notes the data is unavailable.
+FMP /v3/ endpoints were retired August 31, 2025. All calls now use the
+/stable/ API. yfinance fast_info is tried first for price data (no auth
+needed), falling back to FMP quote if Yahoo Finance blocks the request.
 """
 from __future__ import annotations
 
@@ -21,83 +17,92 @@ import yfinance as yf
 logger = logging.getLogger(__name__)
 
 _FMP_KEY = os.environ.get("FMP_API_KEY", "").strip()
-_FMP_BASE = "https://financialmodelingprep.com/api/v3"
+_FMP_BASE = "https://financialmodelingprep.com/stable"
 
 if not _FMP_KEY:
-    logger.warning("FMP_API_KEY not set — fundamental data will be unavailable")
+    logger.warning("FMP_API_KEY not set — market data will be limited")
+
+
+def _fmp(path: str, **params) -> Any:
+    """GET a FMP stable endpoint, returning parsed JSON or None on error."""
+    try:
+        resp = requests.get(
+            f"{_FMP_BASE}/{path}",
+            params={"apikey": _FMP_KEY, **params},
+            timeout=10,
+        )
+        logger.warning("FMP /%s params=%s status=%d body=%s", path, params, resp.status_code, resp.text[:300])
+        if resp.status_code == 200:
+            return resp.json()
+    except Exception as exc:
+        logger.warning("FMP /%s error: %s", path, exc)
+    return None
 
 
 def get_stock_price(ticker: str) -> dict[str, Any]:
-    """Return current price, volume, and market cap via yfinance fast_info."""
+    """Return current price, volume, and market cap.
+
+    Tries yfinance fast_info first (no auth); falls back to FMP quote.
+    """
     try:
         fi = yf.Ticker(ticker).fast_info
-        return {
-            "ticker": ticker.upper(),
-            "current_price": fi.last_price,
-            "volume": fi.last_volume,
-            "market_cap": fi.market_cap,
-            "currency": fi.currency,
-        }
-    except Exception as exc:
-        return {"ticker": ticker.upper(), "error": str(exc)}
+        price = fi.last_price
+        if price:
+            return {
+                "ticker": ticker.upper(),
+                "current_price": price,
+                "volume": fi.last_volume,
+                "market_cap": fi.market_cap,
+                "currency": fi.currency,
+            }
+    except Exception:
+        pass
 
+    # yfinance blocked — use FMP quote
+    if _FMP_KEY:
+        data = _fmp("quote", symbol=ticker)
+        if data and isinstance(data, list) and data:
+            q = data[0]
+            return {
+                "ticker": ticker.upper(),
+                "current_price": q.get("price"),
+                "volume": q.get("volume"),
+                "market_cap": q.get("marketCap"),
+                "currency": "USD",
+            }
 
-def _fmp_get_financials(ticker: str) -> dict[str, Any]:
-    """Fetch fundamentals from Financial Modeling Prep (requires FMP_API_KEY)."""
-    base = {"ticker": ticker.upper()}
-    try:
-        profile_resp = requests.get(
-            f"{_FMP_BASE}/profile/{ticker}",
-            params={"apikey": _FMP_KEY},
-            timeout=10,
-        )
-        logger.warning("FMP profile %s: status=%d body=%s", ticker, profile_resp.status_code, profile_resp.text[:200])
-        profile = profile_resp.json()
-        if profile and isinstance(profile, list):
-            p = profile[0]
-            base.update({
-                "company_name": p.get("companyName", ticker),
-                "sector": p.get("sector"),
-                "industry": p.get("industry"),
-                "description": (p.get("description") or "")[:500],
-            })
-    except Exception as exc:
-        logger.warning("FMP profile error for %s: %s", ticker, exc)
-
-    try:
-        ratios_resp = requests.get(
-            f"{_FMP_BASE}/ratios-ttm/{ticker}",
-            params={"apikey": _FMP_KEY},
-            timeout=10,
-        )
-        logger.warning("FMP ratios %s: status=%d body=%s", ticker, ratios_resp.status_code, ratios_resp.text[:200])
-        ratios = ratios_resp.json()
-        if ratios and isinstance(ratios, list):
-            r = ratios[0]
-            base.update({
-                "pe_ratio": r.get("peRatioTTM"),
-                "ev_ebitda": r.get("enterpriseValueMultipleTTM"),
-                "gross_margin": r.get("grossProfitMarginTTM"),
-                "revenue_growth_yoy": r.get("revenueGrowthTTM"),
-            })
-    except Exception as exc:
-        logger.warning("FMP ratios error for %s: %s", ticker, exc)
-
-    return base
+    return {"ticker": ticker.upper(), "error": "price data unavailable"}
 
 
 def get_financials(ticker: str) -> dict[str, Any]:
-    """Return key financial metrics. Uses FMP if key is set, else returns partial data."""
-    if _FMP_KEY:
-        logger.warning("FMP: fetching fundamentals for %s", ticker)
-        return _fmp_get_financials(ticker)
+    """Return key financial metrics from FMP stable API."""
+    if not _FMP_KEY:
+        logger.warning("FMP_API_KEY missing — skipping fundamentals for %s", ticker)
+        return {"ticker": ticker.upper(), "company_name": ticker}
 
-    logger.warning("FMP_API_KEY missing — skipping fundamentals for %s", ticker)
-    return {
-        "ticker": ticker.upper(),
-        "company_name": ticker,
-        "note": "Fundamental data unavailable (FMP_API_KEY not configured).",
-    }
+    base: dict[str, Any] = {"ticker": ticker.upper(), "company_name": ticker}
+
+    profile = _fmp("profile", symbol=ticker)
+    if profile and isinstance(profile, list) and profile:
+        p = profile[0]
+        base.update({
+            "company_name": p.get("companyName", ticker),
+            "sector": p.get("sector"),
+            "industry": p.get("industry"),
+            "description": (p.get("description") or "")[:500],
+        })
+
+    metrics = _fmp("key-metrics-ttm", symbol=ticker)
+    if metrics and isinstance(metrics, list) and metrics:
+        m = metrics[0]
+        base.update({
+            "pe_ratio": m.get("peRatioTTM"),
+            "ev_ebitda": m.get("evToEbitdaTTM") or m.get("enterpriseValueOverEBITDATTM"),
+            "gross_margin": m.get("grossProfitMarginTTM"),
+            "revenue_growth_yoy": m.get("revenueGrowthTTM"),
+        })
+
+    return base
 
 
 async def get_sec_filings(ticker: str) -> list[dict[str, str]]:
