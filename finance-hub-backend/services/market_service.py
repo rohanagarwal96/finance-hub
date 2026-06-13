@@ -1,8 +1,9 @@
-"""Market data via FMP stable API + yfinance fast_info fallback.
+"""Market data via FMP stable API (free tier) + yfinance fast_info fallback.
 
-FMP /v3/ endpoints were retired August 31, 2025. All calls now use the
-/stable/ API. yfinance fast_info is tried first for price data (no auth
-needed), falling back to FMP quote if Yahoo Finance blocks the request.
+FMP free tier provides: /stable/profile, /stable/income-statement.
+Profile contains price, marketCap, sector, industry, companyName.
+P/E and gross margin are calculated from income statement + profile price.
+EV/EBITDA requires a paid FMP endpoint and stays N/A on free tier.
 """
 from __future__ import annotations
 
@@ -31,7 +32,7 @@ def _fmp(path: str, **params) -> Any:
             params={"apikey": _FMP_KEY, **params},
             timeout=10,
         )
-        logger.warning("FMP /%s params=%s status=%d body=%s", path, params, resp.status_code, resp.text[:300])
+        logger.warning("FMP /%s status=%d body=%s", path, resp.status_code, resp.text[:300])
         if resp.status_code == 200:
             return resp.json()
     except Exception as exc:
@@ -39,10 +40,19 @@ def _fmp(path: str, **params) -> Any:
     return None
 
 
+def _fmp_profile(ticker: str) -> dict | None:
+    """Fetch FMP profile for a ticker, return the first item or None."""
+    data = _fmp("profile", symbol=ticker)
+    if data and isinstance(data, list) and data:
+        return data[0]
+    return None
+
+
 def get_stock_price(ticker: str) -> dict[str, Any]:
     """Return current price, volume, and market cap.
 
-    Tries yfinance fast_info first (no auth); falls back to FMP quote.
+    Tries yfinance fast_info first; falls back to FMP profile on failure.
+    Both are blocked for some tickers on cloud IPs; FMP profile is reliable.
     """
     try:
         fi = yf.Ticker(ticker).fast_info
@@ -58,33 +68,37 @@ def get_stock_price(ticker: str) -> dict[str, Any]:
     except Exception:
         pass
 
-    # yfinance blocked — use FMP quote
     if _FMP_KEY:
-        data = _fmp("quote", symbol=ticker)
-        if data and isinstance(data, list) and data:
-            q = data[0]
+        p = _fmp_profile(ticker)
+        if p:
             return {
                 "ticker": ticker.upper(),
-                "current_price": q.get("price"),
-                "volume": q.get("volume"),
-                "market_cap": q.get("marketCap"),
-                "currency": "USD",
+                "current_price": p.get("price"),
+                "volume": p.get("volume"),
+                "market_cap": p.get("marketCap"),
+                "currency": p.get("currency", "USD"),
             }
 
     return {"ticker": ticker.upper(), "error": "price data unavailable"}
 
 
 def get_financials(ticker: str) -> dict[str, Any]:
-    """Return key financial metrics from FMP stable API."""
+    """Return key financial metrics from FMP stable (free tier).
+
+    P/E is calculated as price / diluted EPS from the income statement.
+    Gross margin is grossProfit / revenue. EV/EBITDA requires a paid endpoint.
+    """
     if not _FMP_KEY:
         logger.warning("FMP_API_KEY missing — skipping fundamentals for %s", ticker)
         return {"ticker": ticker.upper(), "company_name": ticker}
 
     base: dict[str, Any] = {"ticker": ticker.upper(), "company_name": ticker}
 
-    profile = _fmp("profile", symbol=ticker)
-    if profile and isinstance(profile, list) and profile:
-        p = profile[0]
+    # Profile: company info + current price (used to calculate P/E)
+    p = _fmp_profile(ticker)
+    price = None
+    if p:
+        price = p.get("price")
         base.update({
             "company_name": p.get("companyName", ticker),
             "sector": p.get("sector"),
@@ -92,15 +106,26 @@ def get_financials(ticker: str) -> dict[str, Any]:
             "description": (p.get("description") or "")[:500],
         })
 
-    metrics = _fmp("key-metrics-ttm", symbol=ticker)
-    if metrics and isinstance(metrics, list) and metrics:
-        m = metrics[0]
-        base.update({
-            "pe_ratio": m.get("peRatioTTM"),
-            "ev_ebitda": m.get("evToEbitdaTTM") or m.get("enterpriseValueOverEBITDATTM"),
-            "gross_margin": m.get("grossProfitMarginTTM"),
-            "revenue_growth_yoy": m.get("revenueGrowthTTM"),
-        })
+    # Income statement: derive P/E, gross margin, revenue growth YoY
+    stmts = _fmp("income-statement", symbol=ticker, limit=2)
+    if stmts and isinstance(stmts, list) and stmts:
+        latest = stmts[0]
+        revenue = latest.get("revenue")
+        gross_profit = latest.get("grossProfit")
+        eps = latest.get("epsdiluted") or latest.get("eps")
+
+        if price and eps and float(eps) > 0:
+            base["pe_ratio"] = round(float(price) / float(eps), 2)
+
+        if revenue and gross_profit and float(revenue) > 0:
+            base["gross_margin"] = round(float(gross_profit) / float(revenue), 4)
+
+        if len(stmts) >= 2 and revenue:
+            prev_revenue = stmts[1].get("revenue")
+            if prev_revenue and float(prev_revenue) > 0:
+                base["revenue_growth_yoy"] = round(
+                    (float(revenue) - float(prev_revenue)) / float(prev_revenue), 4
+                )
 
     return base
 
