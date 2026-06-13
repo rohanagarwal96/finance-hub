@@ -1,63 +1,93 @@
-"""yfinance wrapper for stock prices, financials, and SEC EDGAR filings."""
+"""Market data: yfinance fast_info (price/market cap) + FMP (fundamentals).
+
+Yahoo Finance's quoteSummary endpoint (used by yf.Ticker.info) is blocked
+by Cloudflare Edge on cloud server IPs. fast_info uses /v8/finance/chart/
+which is not restricted the same way and reliably returns price/market cap.
+
+For sector, industry, and financial ratios, Financial Modeling Prep (FMP)
+is used when FMP_API_KEY is set. Without it, those fields return None and
+the Groq report notes the data is unavailable.
+"""
 from __future__ import annotations
 
+import os
 from typing import Any
 
 import httpx
-import requests
 import yfinance as yf
 
-
-def _yf_session() -> requests.Session:
-    session = requests.Session()
-    session.headers.update({
-        "User-Agent": (
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/120.0.0.0 Safari/537.36"
-        ),
-        "Accept": "*/*",
-        "Accept-Language": "en-US,en;q=0.9",
-    })
-    return session
+_FMP_KEY = os.environ.get("FMP_API_KEY", "").strip()
+_FMP_BASE = "https://financialmodelingprep.com/api/v3"
 
 
 def get_stock_price(ticker: str) -> dict[str, Any]:
-    """Return current price, volume, and market cap for a ticker."""
+    """Return current price, volume, and market cap via yfinance fast_info."""
     try:
-        t = yf.Ticker(ticker, session=_yf_session())
-        info = t.info
+        fi = yf.Ticker(ticker).fast_info
         return {
             "ticker": ticker.upper(),
-            "current_price": info.get("currentPrice") or info.get("regularMarketPrice"),
-            "volume": info.get("volume"),
-            "market_cap": info.get("marketCap"),
-            "currency": info.get("currency", "USD"),
+            "current_price": fi.last_price,
+            "volume": fi.last_volume,
+            "market_cap": fi.market_cap,
+            "currency": fi.currency,
         }
     except Exception as exc:
         return {"ticker": ticker.upper(), "error": str(exc)}
+
+
+def _fmp_get_financials(ticker: str) -> dict[str, Any]:
+    """Fetch fundamentals from Financial Modeling Prep (requires FMP_API_KEY)."""
+    import requests as _req
+
+    base = {"ticker": ticker.upper()}
+    try:
+        profile = _req.get(
+            f"{_FMP_BASE}/profile/{ticker}",
+            params={"apikey": _FMP_KEY},
+            timeout=10,
+        ).json()
+        if profile and isinstance(profile, list):
+            p = profile[0]
+            base.update({
+                "company_name": p.get("companyName", ticker),
+                "sector": p.get("sector"),
+                "industry": p.get("industry"),
+                "description": (p.get("description") or "")[:500],
+            })
+    except Exception:
+        pass
+
+    try:
+        ratios = _req.get(
+            f"{_FMP_BASE}/ratios-ttm/{ticker}",
+            params={"apikey": _FMP_KEY},
+            timeout=10,
+        ).json()
+        if ratios and isinstance(ratios, list):
+            r = ratios[0]
+            base.update({
+                "pe_ratio": r.get("peRatioTTM"),
+                "ev_ebitda": r.get("enterpriseValueMultipleTTM"),
+                "gross_margin": r.get("grossProfitMarginTTM"),
+                "revenue_growth_yoy": r.get("revenueGrowthTTM"),
+            })
+    except Exception:
+        pass
+
+    return base
 
 
 def get_financials(ticker: str) -> dict[str, Any]:
-    """Return key financial metrics for a ticker."""
-    try:
-        t = yf.Ticker(ticker, session=_yf_session())
-        info = t.info
-        return {
-            "ticker": ticker.upper(),
-            "company_name": info.get("longName", ticker),
-            "sector": info.get("sector"),
-            "industry": info.get("industry"),
-            "pe_ratio": info.get("trailingPE"),
-            "ev_ebitda": info.get("enterpriseToEbitda"),
-            "gross_margin": info.get("grossMargins"),
-            "revenue_growth_yoy": info.get("revenueGrowth"),
-            "total_revenue": info.get("totalRevenue"),
-            "net_income": info.get("netIncomeToCommon"),
-            "description": info.get("longBusinessSummary", "")[:500],
-        }
-    except Exception as exc:
-        return {"ticker": ticker.upper(), "error": str(exc)}
+    """Return key financial metrics. Uses FMP if key is set, else returns partial data."""
+    if _FMP_KEY:
+        return _fmp_get_financials(ticker)
+
+    # No FMP key — return minimal data so Groq report is honest about missing fundamentals
+    return {
+        "ticker": ticker.upper(),
+        "company_name": ticker,
+        "note": "Fundamental data unavailable (FMP_API_KEY not configured).",
+    }
 
 
 async def get_sec_filings(ticker: str) -> list[dict[str, str]]:
