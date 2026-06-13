@@ -53,7 +53,8 @@ function ChatInner() {
     const content = input.trim();
     setInput("");
     setSending(true);
-    const userMsg: Message = { id: "temp", role: "user", content, created_at: new Date().toISOString() };
+    const pendingId = `pending-${Date.now()}`;
+    const userMsg: Message = { id: pendingId, role: "user", content, created_at: new Date().toISOString() };
     setMessages(prev => [...prev, userMsg]);
     try {
       const resp = await sendChatMessage({ conversation_id: activeConvId ?? undefined, message: content });
@@ -64,12 +65,12 @@ function ChatInner() {
       const aiMsg: Message = {
         id: resp.message_id,
         role: "assistant",
-        content: resp.reply,
+        content: resp.content,
         created_at: new Date().toISOString(),
       };
-      setMessages(prev => [...prev.filter(m => m.id !== "temp"), userMsg, aiMsg]);
+      setMessages(prev => [...prev.filter(m => m.id !== pendingId), userMsg, aiMsg]);
     } catch {
-      setMessages(prev => prev.filter(m => m.id !== "temp"));
+      setMessages(prev => prev.filter(m => m.id !== pendingId));
       toast.error("Message failed. Try again.");
     } finally {
       setSending(false);

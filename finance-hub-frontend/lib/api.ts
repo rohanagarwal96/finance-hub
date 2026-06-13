@@ -22,7 +22,7 @@ const api = axios.create({
 export async function sendChatMessage(params: {
   conversation_id?: string;
   message: string;
-}): Promise<{ conversation_id: string; reply: string; message_id: string }> {
+}): Promise<{ conversation_id: string; content: string; message_id: string }> {
   if (params.conversation_id) {
     const { data } = await api.post(
       `/chat/conversations/${params.conversation_id}/messages`,
