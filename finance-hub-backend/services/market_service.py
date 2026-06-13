@@ -10,14 +10,23 @@ the Groq report notes the data is unavailable.
 """
 from __future__ import annotations
 
+import logging
 import os
 from typing import Any
 
 import httpx
+import requests
 import yfinance as yf
+
+logger = logging.getLogger(__name__)
 
 _FMP_KEY = os.environ.get("FMP_API_KEY", "").strip()
 _FMP_BASE = "https://financialmodelingprep.com/api/v3"
+
+if _FMP_KEY:
+    logger.info("FMP_API_KEY loaded (len=%d)", len(_FMP_KEY))
+else:
+    logger.warning("FMP_API_KEY not set — fundamental data will be unavailable")
 
 
 def get_stock_price(ticker: str) -> dict[str, Any]:
@@ -37,15 +46,15 @@ def get_stock_price(ticker: str) -> dict[str, Any]:
 
 def _fmp_get_financials(ticker: str) -> dict[str, Any]:
     """Fetch fundamentals from Financial Modeling Prep (requires FMP_API_KEY)."""
-    import requests as _req
-
     base = {"ticker": ticker.upper()}
     try:
-        profile = _req.get(
+        profile_resp = requests.get(
             f"{_FMP_BASE}/profile/{ticker}",
             params={"apikey": _FMP_KEY},
             timeout=10,
-        ).json()
+        )
+        logger.info("FMP profile %s: status=%d body=%s", ticker, profile_resp.status_code, profile_resp.text[:200])
+        profile = profile_resp.json()
         if profile and isinstance(profile, list):
             p = profile[0]
             base.update({
@@ -54,15 +63,17 @@ def _fmp_get_financials(ticker: str) -> dict[str, Any]:
                 "industry": p.get("industry"),
                 "description": (p.get("description") or "")[:500],
             })
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("FMP profile error for %s: %s", ticker, exc)
 
     try:
-        ratios = _req.get(
+        ratios_resp = requests.get(
             f"{_FMP_BASE}/ratios-ttm/{ticker}",
             params={"apikey": _FMP_KEY},
             timeout=10,
-        ).json()
+        )
+        logger.info("FMP ratios %s: status=%d body=%s", ticker, ratios_resp.status_code, ratios_resp.text[:200])
+        ratios = ratios_resp.json()
         if ratios and isinstance(ratios, list):
             r = ratios[0]
             base.update({
@@ -71,8 +82,8 @@ def _fmp_get_financials(ticker: str) -> dict[str, Any]:
                 "gross_margin": r.get("grossProfitMarginTTM"),
                 "revenue_growth_yoy": r.get("revenueGrowthTTM"),
             })
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("FMP ratios error for %s: %s", ticker, exc)
 
     return base
 
