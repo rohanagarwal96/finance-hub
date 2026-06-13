@@ -23,9 +23,7 @@ logger = logging.getLogger(__name__)
 _FMP_KEY = os.environ.get("FMP_API_KEY", "").strip()
 _FMP_BASE = "https://financialmodelingprep.com/api/v3"
 
-if _FMP_KEY:
-    logger.info("FMP_API_KEY loaded (len=%d)", len(_FMP_KEY))
-else:
+if not _FMP_KEY:
     logger.warning("FMP_API_KEY not set — fundamental data will be unavailable")
 
 
@@ -53,7 +51,7 @@ def _fmp_get_financials(ticker: str) -> dict[str, Any]:
             params={"apikey": _FMP_KEY},
             timeout=10,
         )
-        logger.info("FMP profile %s: status=%d body=%s", ticker, profile_resp.status_code, profile_resp.text[:200])
+        logger.warning("FMP profile %s: status=%d body=%s", ticker, profile_resp.status_code, profile_resp.text[:200])
         profile = profile_resp.json()
         if profile and isinstance(profile, list):
             p = profile[0]
@@ -72,7 +70,7 @@ def _fmp_get_financials(ticker: str) -> dict[str, Any]:
             params={"apikey": _FMP_KEY},
             timeout=10,
         )
-        logger.info("FMP ratios %s: status=%d body=%s", ticker, ratios_resp.status_code, ratios_resp.text[:200])
+        logger.warning("FMP ratios %s: status=%d body=%s", ticker, ratios_resp.status_code, ratios_resp.text[:200])
         ratios = ratios_resp.json()
         if ratios and isinstance(ratios, list):
             r = ratios[0]
@@ -91,9 +89,10 @@ def _fmp_get_financials(ticker: str) -> dict[str, Any]:
 def get_financials(ticker: str) -> dict[str, Any]:
     """Return key financial metrics. Uses FMP if key is set, else returns partial data."""
     if _FMP_KEY:
+        logger.warning("FMP: fetching fundamentals for %s", ticker)
         return _fmp_get_financials(ticker)
 
-    # No FMP key — return minimal data so Groq report is honest about missing fundamentals
+    logger.warning("FMP_API_KEY missing — skipping fundamentals for %s", ticker)
     return {
         "ticker": ticker.upper(),
         "company_name": ticker,
