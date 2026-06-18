@@ -1,5 +1,4 @@
 """Finance Hub FastAPI application entry point."""
-import asyncio
 import logging
 from contextlib import asynccontextmanager
 
@@ -9,7 +8,6 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from models.database import DATABASE_URL
 from routers import chat, document_qa, portfolio, research, sentiment, study, summarizer
-from utils.embeddings import _get_model
 
 logger = logging.getLogger(__name__)
 
@@ -60,16 +58,6 @@ CREATE TABLE IF NOT EXISTS study_attempts (
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Pre-warm the embedding model so it's in memory before the first upload
-    # request arrives. Without this, the lazy load + PDF processing happen
-    # concurrently on the first request and push the process past the 512 MB limit.
-    try:
-        loop = asyncio.get_event_loop()
-        await loop.run_in_executor(None, _get_model)
-        logger.info("Embedding model warmed up.")
-    except Exception as exc:
-        logger.warning("Embedding model pre-warm failed: %s", exc)
-
     # Create tables on startup (idempotent — IF NOT EXISTS)
     try:
         asyncpg_url = DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://")
