@@ -14,7 +14,7 @@ import requests
 
 logger = logging.getLogger(__name__)
 
-_HF_TOKEN = os.environ.get("HF_TOKEN", "")
+_HF_TOKEN = os.environ.get("HUGGINGFACE_API_TOKEN", "")
 _EMBED_URL = (
     "https://api-inference.huggingface.co/models/"
     "sentence-transformers/all-MiniLM-L6-v2"
