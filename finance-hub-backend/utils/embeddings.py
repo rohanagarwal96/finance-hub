@@ -1,63 +1,40 @@
-"""Remote embeddings via HuggingFace Inference API.
+"""Embeddings via Pinecone Inference API.
 
-Uses `requests` (same library as FMP calls) rather than httpx to avoid the
-IPv6-preference DNS failure seen with httpx on Render's free tier.
-Same model (all-MiniLM-L6-v2, 384 dims) so existing Pinecone vectors stay valid.
+Runs on Pinecone's servers using the existing PINECONE_API_KEY — no local
+model, no external HTTP calls to domains that Render's free tier can't reach.
+Model: multilingual-e5-large (1024 dims). Requires a Pinecone index with
+1024 dimensions (cosine metric, serverless).
 """
 from __future__ import annotations
 
-import logging
 import os
-import time
 
-import requests
+from pinecone import Pinecone
 
-logger = logging.getLogger(__name__)
-
-_HF_TOKEN = os.environ.get("HUGGINGFACE_API_TOKEN", "")
-_EMBED_URL = (
-    "https://api-inference.huggingface.co/models/"
-    "sentence-transformers/all-MiniLM-L6-v2"
-)
+_pc = Pinecone(api_key=os.environ["PINECONE_API_KEY"].strip().strip('"'))
+_MODEL = "multilingual-e5-large"
 _BATCH_SIZE = 32
 
 
-def _headers() -> dict[str, str]:
-    if _HF_TOKEN:
-        return {"Authorization": f"Bearer {_HF_TOKEN}"}
-    return {}
-
-
-def _post_with_retry(texts: list[str], retries: int = 3) -> list[list[float]]:
-    """POST to HF Inference API, retrying on 503 (model cold-starting)."""
-    for attempt in range(retries):
-        resp = requests.post(
-            _EMBED_URL,
-            headers=_headers(),
-            json={"inputs": texts},
-            timeout=30,
-        )
-        if resp.status_code == 503:
-            wait = min(resp.json().get("estimated_time", 10), 20)
-            logger.warning(
-                "HF model cold-starting, waiting %.0fs (attempt %d/%d)",
-                wait, attempt + 1, retries,
-            )
-            time.sleep(wait)
-            continue
-        resp.raise_for_status()
-        return resp.json()
-    raise RuntimeError("HF Inference API unavailable after retries")
-
-
 def embed_texts(texts: list[str]) -> list[list[float]]:
-    """Return 384-dim embeddings for a list of texts."""
+    """Return 1024-dim embeddings for a list of passage texts."""
     results: list[list[float]] = []
     for i in range(0, len(texts), _BATCH_SIZE):
-        results.extend(_post_with_retry(texts[i: i + _BATCH_SIZE]))
+        batch = texts[i: i + _BATCH_SIZE]
+        response = _pc.inference.embed(
+            model=_MODEL,
+            inputs=batch,
+            parameters={"input_type": "passage", "truncate": "END"},
+        )
+        results.extend([list(e.values) for e in response])
     return results
 
 
 def embed_single(text: str) -> list[float]:
-    """Return 384-dim embedding for a single text."""
-    return embed_texts([text])[0]
+    """Return 1024-dim embedding for a single query text."""
+    response = _pc.inference.embed(
+        model=_MODEL,
+        inputs=[text],
+        parameters={"input_type": "query", "truncate": "END"},
+    )
+    return list(response[0].values)
