@@ -81,6 +81,8 @@ class KeyMetrics(BaseModel):
     pe_ratio: Optional[float] = None
     ev_ebitda: Optional[float] = None
     gross_margin: Optional[float] = None
+    operating_margin: Optional[float] = None
+    ps_ratio: Optional[float] = None
     revenue_growth_yoy: Optional[float] = None
     market_cap: Optional[float] = None
     current_price: Optional[float] = None

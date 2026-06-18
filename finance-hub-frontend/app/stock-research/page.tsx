@@ -80,6 +80,8 @@ export default function StockResearchPage() {
                   {[
                     { label: "P/E Ratio", value: (financials.pe_ratio as number)?.toFixed(1) ?? "N/A" },
                     { label: "EV/EBITDA", value: (financials.ev_ebitda as number)?.toFixed(1) ?? "N/A" },
+                    { label: "P/S Ratio", value: (financials.ps_ratio as number)?.toFixed(1) ?? "N/A" },
+                    { label: "Operating Margin", value: financials.operating_margin != null ? `${((financials.operating_margin as number) * 100).toFixed(1)}%` : "N/A" },
                     { label: "Sector", value: (financials.sector as string) ?? "N/A" },
                     { label: "Industry", value: (financials.industry as string) ?? "N/A" },
                   ].map(({ label, value }) => (

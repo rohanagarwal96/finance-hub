@@ -1,9 +1,10 @@
 """Market data via FMP stable API (free tier) + yfinance fast_info fallback.
 
-FMP free tier provides: /stable/profile, /stable/income-statement.
+FMP free tier provides: /stable/profile, /stable/income-statement, /stable/key-metrics.
 Profile contains price, marketCap, sector, industry, companyName.
 P/E and gross margin are calculated from income statement + profile price.
-EV/EBITDA requires a paid FMP endpoint and stays N/A on free tier.
+EV/EBITDA is fetched from FMP key-metrics (enterpriseValueOverEBITDA), with a
+yfinance .info fallback if that endpoint returns nothing.
 """
 from __future__ import annotations
 
@@ -86,7 +87,8 @@ def get_financials(ticker: str) -> dict[str, Any]:
     """Return key financial metrics from FMP stable (free tier).
 
     P/E is calculated as price / diluted EPS from the income statement.
-    Gross margin is grossProfit / revenue. EV/EBITDA requires a paid endpoint.
+    Gross margin is grossProfit / revenue.
+    EV/EBITDA comes from FMP key-metrics, with a yfinance .info fallback.
     """
     if not _FMP_KEY:
         logger.warning("FMP_API_KEY missing — skipping fundamentals for %s", ticker)
@@ -106,12 +108,15 @@ def get_financials(ticker: str) -> dict[str, Any]:
             "description": (p.get("description") or "")[:500],
         })
 
-    # Income statement: derive P/E, gross margin, revenue growth YoY
+    market_cap = p.get("marketCap") if p else None
+
+    # Income statement: derive P/E, gross margin, operating margin, P/S, revenue growth YoY
     stmts = _fmp("income-statement", symbol=ticker, limit=2)
     if stmts and isinstance(stmts, list) and stmts:
         latest = stmts[0]
         revenue = latest.get("revenue")
         gross_profit = latest.get("grossProfit")
+        operating_income = latest.get("operatingIncome")
         eps = latest.get("epsdiluted") or latest.get("eps")
 
         if price and eps and float(eps) > 0:
@@ -120,12 +125,37 @@ def get_financials(ticker: str) -> dict[str, Any]:
         if revenue and gross_profit and float(revenue) > 0:
             base["gross_margin"] = round(float(gross_profit) / float(revenue), 4)
 
+        if revenue and operating_income and float(revenue) > 0:
+            base["operating_margin"] = round(float(operating_income) / float(revenue), 4)
+
+        if market_cap and revenue and float(revenue) > 0:
+            base["ps_ratio"] = round(float(market_cap) / float(revenue), 2)
+
         if len(stmts) >= 2 and revenue:
             prev_revenue = stmts[1].get("revenue")
             if prev_revenue and float(prev_revenue) > 0:
                 base["revenue_growth_yoy"] = round(
                     (float(revenue) - float(prev_revenue)) / float(prev_revenue), 4
                 )
+
+    # EV/EBITDA: try FMP key-metrics first, fall back to yfinance
+    km = _fmp("key-metrics", symbol=ticker, limit=1)
+    if km and isinstance(km, list) and km:
+        ev_ebitda = km[0].get("enterpriseValueOverEBITDA")
+        if ev_ebitda is not None:
+            try:
+                base["ev_ebitda"] = round(float(ev_ebitda), 2)
+            except (TypeError, ValueError):
+                pass
+
+    if "ev_ebitda" not in base:
+        try:
+            info = yf.Ticker(ticker).info
+            ev_ebitda = info.get("enterpriseToEbitda")
+            if ev_ebitda is not None:
+                base["ev_ebitda"] = round(float(ev_ebitda), 2)
+        except Exception as exc:
+            logger.warning("yfinance EV/EBITDA fallback failed for %s: %s", ticker, exc)
 
     return base
 

@@ -28,6 +28,8 @@ export interface KeyMetrics {
   pe_ratio: number | null;
   ev_ebitda: number | null;
   gross_margin: number | null;
+  operating_margin: number | null;
+  ps_ratio: number | null;
   revenue_growth_yoy: number | null;
   market_cap: number | null;
   current_price: number | null;
