@@ -1,9 +1,8 @@
 """Remote embeddings via HuggingFace Inference API.
 
-Replaces the local FastEmbed/ONNX model to eliminate the ~300 MB memory spike
-that caused OOM crashes on Render's 512 MB free tier.
-The same model (all-MiniLM-L6-v2, 384 dims) is used so existing Pinecone
-vectors remain valid and no index rebuild is needed.
+Uses `requests` (same library as FMP calls) rather than httpx to avoid the
+IPv6-preference DNS failure seen with httpx on Render's free tier.
+Same model (all-MiniLM-L6-v2, 384 dims) so existing Pinecone vectors stay valid.
 """
 from __future__ import annotations
 
@@ -11,7 +10,7 @@ import logging
 import os
 import time
 
-import httpx
+import requests
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +19,7 @@ _EMBED_URL = (
     "https://api-inference.huggingface.co/models/"
     "sentence-transformers/all-MiniLM-L6-v2"
 )
-_BATCH_SIZE = 32  # stay well under HF payload limits
+_BATCH_SIZE = 32
 
 
 def _headers() -> dict[str, str]:
@@ -32,7 +31,7 @@ def _headers() -> dict[str, str]:
 def _post_with_retry(texts: list[str], retries: int = 3) -> list[list[float]]:
     """POST to HF Inference API, retrying on 503 (model cold-starting)."""
     for attempt in range(retries):
-        resp = httpx.post(
+        resp = requests.post(
             _EMBED_URL,
             headers=_headers(),
             json={"inputs": texts},
